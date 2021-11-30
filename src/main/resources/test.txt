@@ -1,0 +1,7 @@
+set mysqlHost=localhost;
+set mysqlPort=3306;
+set mysqlUserName=root;
+set mysqlPassword=root;
+set mysqlDb=root;
+set c = select mysql.user.name from mysql.user join txt.familyData on mysql.user.id = txt.familyData.id where txt.familyData.age = 12 limit 10;
+print ${c};
