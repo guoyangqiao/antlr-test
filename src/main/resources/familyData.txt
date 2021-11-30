@@ -1,4 +1,4 @@
-family,age
-LA,12
-GS,12
-CA,16
+id,city,grade
+1,LA,3
+2,GS,222
+3,CA,3

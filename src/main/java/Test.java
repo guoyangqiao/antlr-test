@@ -1,4 +1,5 @@
-import org.antlr.v4.runtime.RuleContext;
+import org.antlr.v4.runtime.*;
+import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.TerminalNode;
 import org.apache.commons.io.IOUtils;
 
@@ -19,15 +20,24 @@ public class Test extends ackBaseVisitor<Object> {
     private final Map<String, Object> variables = new HashMap<>();
     private final Deque<SqlContext> sqlContextStack = new LinkedList<>();
 
-    public static void main(String[] args) {
-
+    public static void main(String[] args) throws IOException {
+        CharStream input = CharStreams.fromStream(Thread.currentThread().getContextClassLoader().getResourceAsStream("test.txt"));
+        Lexer lexer = new ackLexer(input);
+        CommonTokenStream tokens = new CommonTokenStream(lexer);
+        ackParser parser = new ackParser(tokens);
+        ParseTree tree = parser.prog(); // parse
+        Test vt = new Test();
+        vt.visit(tree);
     }
 
     public Object visitProg(ackParser.ProgContext ctx) {
         System.out.println("开始执行");
-        final Object aVoid = super.visitProg(ctx);
+        for (ackParser.StatContext statContext : ctx.stat()) {
+            System.out.println("开始处理[" + statContext.getText() + "]");
+            statContext.accept(this);
+        }
         System.out.println("结束执行");
-        return aVoid;
+        return null;
     }
 
     public Object visitExp(ackParser.ExpContext ctx) {
@@ -115,14 +125,16 @@ public class Test extends ackBaseVisitor<Object> {
             if (obj != null) {
                 password = String.valueOf(obj);
             }
-            try (final Connection connection = DriverManager.getConnection("jdbc:mysql://" + variables.get(MYSQL_HOST_KEY) + ":" + variables.get(MYSQL_PORT_KEY) + "/" + variables.get(MYSQL_DB_KEY) + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC", String.valueOf(variables.get(MYSQL_USER_NAME_KEY)), password)) {
+            final String url = "jdbc:mysql://" + variables.get(MYSQL_HOST_KEY) + ":" + variables.get(MYSQL_PORT_KEY) + "/" + variables.get(MYSQL_DB_KEY) + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC";
+            final String user = String.valueOf(variables.get(MYSQL_USER_NAME_KEY));
+            try (final Connection connection = DriverManager.getConnection(url, user, password)) {
                 try (final PreparedStatement preparedStatement = connection.prepareStatement("select * from " + tableName)) {
                     final ResultSet resultSet = preparedStatement.executeQuery();
                     tableData.name = tableName;
                     final ResultSetMetaData metaData = resultSet.getMetaData();
                     final int columnCount = metaData.getColumnCount();
                     for (int i = 0; i < columnCount; i++) {
-                        tableDef.add(metaData.getColumnLabel(i + 1));
+                        tableDef.add(text.fullPath() + "." + metaData.getColumnLabel(i + 1));
                     }
                     while (resultSet.next()) {
                         final List<String> objects = new ArrayList<>();
@@ -153,7 +165,7 @@ public class Test extends ackBaseVisitor<Object> {
                     final List<String> row = Arrays.asList(split2);
                     results.add(row);
                 }
-                tableData.cols = Arrays.asList(strings.get(0).split(","));
+                tableData.cols = Arrays.stream(strings.get(0).split(",")).map(x -> text.fullPath() + "." + x).collect(Collectors.toList());
                 tableData.name = tableName;
                 tableData.rows = results;
                 sqlContext.tableData.push(tableData);
@@ -174,8 +186,8 @@ public class Test extends ackBaseVisitor<Object> {
         visitSingleTable(rightTableDef);
         final FieldDef leftFieldDef = FieldDef.parse(ctx.field(2).getText());
         final FieldDef rightFieldDef = FieldDef.parse(ctx.field(3).getText());
-        final TableData leftTableData = tableDataDeque.pop();
         final TableData rightTableData = tableDataDeque.pop();
+        final TableData leftTableData = tableDataDeque.pop();
         final List<List<String>> leftData = leftTableData.rows;
         final List<List<String>> rightData = rightTableData.rows;
         final List<String> lefTableDef = leftTableData.cols;
@@ -288,17 +300,17 @@ public class Test extends ackBaseVisitor<Object> {
 
     private int getString(FieldDef leftFieldDef, List<String> lefTableDef) {
         for (int i = 0; i < lefTableDef.size(); i++) {
-            if (leftFieldDef.field.equalsIgnoreCase(lefTableDef.get(i))) {
+            if (leftFieldDef.fullPath().equalsIgnoreCase(lefTableDef.get(i))) {
                 return i;
             }
         }
-        return -1;
+        return 1 / 0;
     }
 }
 
 class SqlContext {
 
-    Deque<TableData> tableData;
+    Deque<TableData> tableData = new LinkedList<>();
 }
 
 
@@ -306,6 +318,14 @@ class TableData {
     List<List<String>> rows;
     List<String> cols;
     String name;
+
+    public String toString() {
+        return "TableData{" +
+                "rows=" + rows +
+                ", cols=" + cols +
+                ", name='" + name + '\'' +
+                '}';
+    }
 }
 
 class TableDef {
@@ -314,10 +334,14 @@ class TableDef {
 
     public static TableDef parse(String str) {
         final TableDef tableDef = new TableDef();
-        final String[] split = str.split(".");
+        final String[] split = str.split("\\.");
         tableDef.engine = split[0];
         tableDef.table = split[1];
         return tableDef;
+    }
+
+    public String fullPath() {
+        return engine + "." + table;
     }
 }
 
@@ -328,8 +352,12 @@ class FieldDef {
     public static FieldDef parse(String str) {
         final FieldDef fieldDef = new FieldDef();
         fieldDef.tableDef = TableDef.parse(str);
-        final String[] split = str.split(".");
+        final String[] split = str.split("\\.");
         fieldDef.field = split[2];
         return fieldDef;
+    }
+
+    public String fullPath() {
+        return tableDef.fullPath() + "." + field;
     }
 }
