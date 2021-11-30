@@ -219,7 +219,8 @@ public class Test extends ackBaseVisitor<Object> {
     public Object visitLimit_clause(ackParser.Limit_clauseContext ctx) {
         final SqlContext peekCtx = sqlContextStack.peek();
         final TableData peekData = peekCtx.tableData.peek();
-        final ArrayList<List<String>> lists = new ArrayList<>(peekData.rows.subList(0, Integer.parseInt(ctx.POSITIVE_INT().getText())));
+        final int toIndex = Integer.parseInt(ctx.POSITIVE_INT().getText());
+        final ArrayList<List<String>> lists = new ArrayList<>(peekData.rows.subList(0, Math.min(toIndex, peekData.rows.size())));
         peekData.rows = lists;
         return null;
     }
